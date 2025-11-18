@@ -43,6 +43,8 @@ interface TokenReportAdmin {
   deliveredAt: string | null
   reportedAt: string | null
   reason: string | null
+  refundedAt: string | null
+  refundAmount: number | null
 }
 
 type TabType = 'upload' | 'stats' | 'keys' | 'notice' | 'reports'
@@ -64,6 +66,7 @@ export default function AdminPage() {
   // Create key state
   const [newKey, setNewKey] = useState('')
   const [newExpiresAt, setNewExpiresAt] = useState('')
+  const [newKeyCredit, setNewKeyCredit] = useState('')
   const [createLoading, setCreateLoading] = useState(false)
   
   // Keys pagination
@@ -310,6 +313,17 @@ export default function AdminPage() {
     setError(null)
 
     try {
+      // Parse credit amount if provided
+      const creditCents = newKeyCredit.trim() 
+        ? Math.round(parseFloat(newKeyCredit.replace(',', '.')) * 100)
+        : 0
+
+      if (newKeyCredit.trim() && (isNaN(creditCents) || creditCents < 0)) {
+        setError('Credit không hợp lệ')
+        setCreateLoading(false)
+        return
+      }
+
       const response = await fetch('/api/admin/keys', {
         method: 'POST',
         headers: {
@@ -319,6 +333,7 @@ export default function AdminPage() {
         body: JSON.stringify({
           key: newKey.trim(),
           expiresAt: new Date(newExpiresAt).toISOString(),
+          creditCents: creditCents,
         }),
       })
 
@@ -327,6 +342,7 @@ export default function AdminPage() {
       if (response.ok) {
         setNewKey('')
         setNewExpiresAt('')
+        setNewKeyCredit('')
         await fetchKeys()
       } else {
         setError(data.message || 'Không thể tạo key')
@@ -447,6 +463,37 @@ export default function AdminPage() {
     }
   }
 
+  const handleRefund = async (reportId: string) => {
+    if (!window.confirm('Bạn có chắc muốn refund cho token report này?')) {
+      return
+    }
+
+    try {
+      const response = await fetch('/api/admin/reports/refund', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: JSON.stringify({ reportId }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        alert(`Đã refund thành công $${data.data.refundAmount} (thời gian: ${data.data.timeDiffMinutes} phút)`)
+        await fetchReports()
+      } else if (response.status === 401) {
+        router.push('/admin/login')
+      } else {
+        const message = data?.message || 'Không thể refund'
+        alert(message)
+      }
+    } catch (e) {
+      alert('Có lỗi xảy ra khi refund')
+    }
+  }
+
   const handleLogout = async () => {
     try {
       await fetch('/api/admin/logout', {
@@ -551,6 +598,8 @@ export default function AdminPage() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Thời gian lấy</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Thời gian report</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lý do</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Trạng thái</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hành động</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -571,18 +620,39 @@ export default function AdminPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 max-w-xs truncate" title={r.reason || ''}>
                         {r.reason || '-'}
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {r.refundedAt ? (
+                          <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                            Đã refund ${(r.refundAmount || 0) / 100}
+                          </span>
+                        ) : (
+                          <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                            Chưa refund
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {!r.refundedAt && (
+                          <button
+                            onClick={() => handleRefund(r.id)}
+                            className="text-sm font-medium text-blue-600 hover:text-blue-900"
+                          >
+                            Refund
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                   {reports.length === 0 && !reportsLoading && (
                     <tr>
-                      <td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500">
+                      <td colSpan={7} className="px-6 py-4 text-center text-sm text-gray-500">
                         Chưa có báo cáo token nào.
                       </td>
                     </tr>
                   )}
                   {reportsLoading && (
                     <tr>
-                      <td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500">
+                      <td colSpan={7} className="px-6 py-4 text-center text-sm text-gray-500">
                         Đang tải báo cáo...
                       </td>
                     </tr>
@@ -790,7 +860,7 @@ export default function AdminPage() {
               <h3 className="text-md font-medium">Tạo Key mới</h3>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
                 <label className="form-label">Key</label>
                 <input
@@ -810,6 +880,18 @@ export default function AdminPage() {
                   className="form-input"
                   value={newExpiresAt}
                   onChange={(e) => setNewExpiresAt(e.target.value)}
+                  disabled={createLoading}
+                />
+              </div>
+              
+              <div>
+                <label className="form-label">Credit ban đầu ($)</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="0"
+                  value={newKeyCredit}
+                  onChange={(e) => setNewKeyCredit(e.target.value)}
                   disabled={createLoading}
                 />
               </div>

@@ -24,6 +24,8 @@ export const tokenReports = pgTable('token_reports', {
   tokenId: uuid('token_id').notNull().references(() => tokenPool.id),
   reportedAt: timestamp('reported_at', { withTimezone: true }).notNull().default(sql`now()`),
   reason: text('reason'),
+  refundedAt: timestamp('refunded_at', { withTimezone: true }),
+  refundAmount: integer('refund_amount'), // in cents
 })
 
 // Token pool - pre-uploaded tokens to distribute

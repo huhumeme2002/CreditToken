@@ -20,6 +20,8 @@ export async function GET(request: NextRequest) {
         id: tokenReports.id,
         reportedAt: tokenReports.reportedAt,
         reason: tokenReports.reason,
+        refundedAt: tokenReports.refundedAt,
+        refundAmount: tokenReports.refundAmount,
         tokenValue: tokenPool.value,
         keyId: keys.id,
         keyValue: keys.key,
@@ -39,6 +41,8 @@ export async function GET(request: NextRequest) {
       deliveredAt: r.deliveredAt ? r.deliveredAt.toISOString() : null,
       reportedAt: r.reportedAt ? r.reportedAt.toISOString() : null,
       reason: r.reason ?? null,
+      refundedAt: r.refundedAt ? r.refundedAt.toISOString() : null,
+      refundAmount: r.refundAmount ?? null,
     }))
 
     return successResponse({ reports })
