@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { z } from 'zod'
-import { setAdminSessionCookie } from '@/lib/auth'
+import { setAdminSession } from '@/lib/auth'
 import { successResponse, errorResponse, ErrorResponses, validateHeaders } from '@/lib/responses'
 import { env } from '@/lib/env'
 
@@ -26,11 +26,10 @@ export async function POST(request: NextRequest) {
       return ErrorResponses.adminAuthFailed()
     }
 
-    // Set admin session cookie on the response explicitly
-    const response = successResponse({ ok: true })
-    await setAdminSessionCookie(response)
+    // Set admin session using cookies() from next/headers
+    await setAdminSession()
 
-    return response
+    return successResponse({ ok: true })
   } catch (error) {
     console.error('Admin login error:', error)
     
