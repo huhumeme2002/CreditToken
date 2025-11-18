@@ -173,6 +173,37 @@ export default function AdminPage() {
     }
   }
 
+  const fetchReports = async () => {
+    setReportsLoading(true)
+    setError(null)
+    try {
+      const response = await fetch('/api/admin/reports', {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Giả định API trả về { data: { reports: TokenReportAdmin[] } }
+        if (data?.data?.reports) {
+          setReports(data.data.reports)
+        } else if (Array.isArray(data?.reports)) {
+          // fallback nếu API trả về { reports: [...] }
+          setReports(data.reports)
+        } else {
+          setReports([])
+        }
+      } else if (response.status === 401) {
+        router.push('/admin/login')
+      } else {
+        setError('Không thể tải báo cáo token')
+      }
+    } catch (e) {
+      setError('Có lỗi xảy ra khi tải báo cáo token')
+    } finally {
+      setReportsLoading(false)
+    }
+  }
+
   const handleFileUpload = async (file: File) => {
     const fileExtension = file.name.toLowerCase().split('.').pop()
     
@@ -375,6 +406,44 @@ export default function AdminPage() {
       }
     } catch (err) {
       setError('Có lỗi xảy ra khi thay đổi trạng thái key')
+    }
+  }
+
+  const handleUpdateCredit = async (keyId: string, currentCreditCents: number) => {
+    const currentUsd = (currentCreditCents || 0) / 100
+    const input = window.prompt('Nhập credit mới cho key (USD):', currentUsd.toString())
+    if (input === null) return
+
+    const normalized = input.replace(',', '.').trim()
+    const value = Number.parseFloat(normalized)
+
+    if (Number.isNaN(value) || value < 0) {
+      alert('Giá trị credit không hợp lệ')
+      return
+    }
+
+    const creditCents = Math.round(value * 100)
+
+    try {
+      const response = await fetch('/api/admin/keys/credit', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: JSON.stringify({ keyId, creditCents }),
+      })
+
+      if (response.ok) {
+        await fetchKeys()
+      } else if (response.status === 401) {
+        router.push('/admin/login')
+      } else {
+        const data = await response.json().catch(() => null)
+        setError(data?.message || 'Không thể cập nhật credit')
+      }
+    } catch (e) {
+      setError('Có lỗi xảy ra khi cập nhật credit')
     }
   }
 
