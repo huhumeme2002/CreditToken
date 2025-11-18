@@ -104,32 +104,26 @@ export async function POST(request: NextRequest) {
 
     console.log('[Refund] Credit update:', currentCredit, '->', newCreditCents)
 
-    // Update key credit and mark report as refunded in a transaction
-    try {
-      await db.transaction(async (tx) => {
-        // Add refund to key credit
-        await tx
-          .update(keys)
-          .set({
-            creditCents: newCreditCents,
-          })
-          .where(eq(keys.id, reportData.keyId))
-
-        // Mark report as refunded
-        await tx
-          .update(tokenReports)
-          .set({
-            refundedAt: new Date(),
-            refundAmount: refundAmount,
-          })
-          .where(eq(tokenReports.id, reportId))
+    // Update key credit first
+    await db
+      .update(keys)
+      .set({
+        creditCents: newCreditCents,
       })
+      .where(eq(keys.id, reportData.keyId))
+    
+    console.log('[Refund] Key credit updated')
+
+    // Mark report as refunded
+    await db
+      .update(tokenReports)
+      .set({
+        refundedAt: new Date(),
+        refundAmount: refundAmount,
+      })
+      .where(eq(tokenReports.id, reportId))
       
-      console.log('[Refund] Transaction completed successfully')
-    } catch (txError) {
-      console.error('[Refund] Transaction failed:', txError)
-      throw txError
-    }
+    console.log('[Refund] Report marked as refunded')
 
     return successResponse({
       refunded: true,
