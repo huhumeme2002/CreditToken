@@ -26,6 +26,7 @@ export const tokenReports = pgTable('token_reports', {
   reason: text('reason'),
   refundedAt: timestamp('refunded_at', { withTimezone: true }),
   refundAmount: integer('refund_amount'), // in cents
+  rejectedAt: timestamp('rejected_at', { withTimezone: true }),
 })
 
 // Token pool - pre-uploaded tokens to distribute

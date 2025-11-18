@@ -45,6 +45,7 @@ interface TokenReportAdmin {
   reason: string | null
   refundedAt: string | null
   refundAmount: number | null
+  rejectedAt: string | null
 }
 
 type TabType = 'upload' | 'stats' | 'keys' | 'notice' | 'reports'
@@ -355,6 +356,17 @@ export default function AdminPage() {
   }
 
   const createKeyWithDuration = async (duration: '1d' | '7d' | '1m' | '3m' | '1y') => {
+    // Ask for credit amount
+    const creditInput = window.prompt('Nhập credit ban đầu ($):', '10')
+    if (creditInput === null) return
+
+    const creditAmount = parseFloat(creditInput.replace(',', '.'))
+    if (isNaN(creditAmount) || creditAmount < 0) {
+      alert('Credit không hợp lệ')
+      return
+    }
+    const creditCents = Math.round(creditAmount * 100)
+
     const now = new Date()
     const expires = new Date(now)
     switch (duration) {
@@ -385,7 +397,7 @@ export default function AdminPage() {
           'Content-Type': 'application/json',
           'X-Requested-With': 'XMLHttpRequest',
         },
-        body: JSON.stringify({ key: genKey, expiresAt: expires.toISOString() }),
+        body: JSON.stringify({ key: genKey, expiresAt: expires.toISOString(), creditCents }),
       })
       const data = await response.json()
       if (!response.ok) {
@@ -491,6 +503,37 @@ export default function AdminPage() {
       }
     } catch (e) {
       alert('Có lỗi xảy ra khi refund')
+    }
+  }
+
+  const handleReject = async (reportId: string) => {
+    if (!window.confirm('Bạn có chắc muốn từ chối token report này?')) {
+      return
+    }
+
+    try {
+      const response = await fetch('/api/admin/reports/reject', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: JSON.stringify({ reportId }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        alert('Đã từ chối report')
+        await fetchReports()
+      } else if (response.status === 401) {
+        router.push('/admin/login')
+      } else {
+        const message = data?.message || 'Không thể từ chối'
+        alert(message)
+      }
+    } catch (e) {
+      alert('Có lỗi xảy ra khi từ chối')
     }
   }
 
@@ -625,20 +668,32 @@ export default function AdminPage() {
                           <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
                             Đã refund ${(r.refundAmount || 0) / 100}
                           </span>
+                        ) : r.rejectedAt ? (
+                          <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
+                            Đã từ chối
+                          </span>
                         ) : (
                           <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                            Chưa refund
+                            Chờ xử lý
                           </span>
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        {!r.refundedAt && (
-                          <button
-                            onClick={() => handleRefund(r.id)}
-                            className="text-sm font-medium text-blue-600 hover:text-blue-900"
-                          >
-                            Refund
-                          </button>
+                        {!r.refundedAt && !r.rejectedAt && (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleRefund(r.id)}
+                              className="text-sm font-medium text-blue-600 hover:text-blue-900"
+                            >
+                              Refund
+                            </button>
+                            <button
+                              onClick={() => handleReject(r.id)}
+                              className="text-sm font-medium text-red-600 hover:text-red-900"
+                            >
+                              Từ chối
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>
