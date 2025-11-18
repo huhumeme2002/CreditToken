@@ -1,7 +1,7 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { setAdminSession } from '@/lib/auth'
-import { successResponse, errorResponse, ErrorResponses, validateHeaders } from '@/lib/responses'
+import { signAdminSession } from '@/lib/auth'
+import { errorResponse, ErrorResponses, validateHeaders } from '@/lib/responses'
 import { env } from '@/lib/env'
 
 export const runtime = 'nodejs'
@@ -26,10 +26,17 @@ export async function POST(request: NextRequest) {
       return ErrorResponses.adminAuthFailed()
     }
 
-    // Set admin session using cookies() from next/headers
-    await setAdminSession()
+    // Generate admin session token
+    const token = await signAdminSession()
+    
+    // Create response with cookie
+    const response = NextResponse.json({ ok: true, data: { ok: true } }, { status: 200 })
+    
+    // Set cookie manually with explicit options
+    const cookieValue = `admin_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 7}${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`
+    response.headers.set('Set-Cookie', cookieValue)
 
-    return successResponse({ ok: true })
+    return response
   } catch (error) {
     console.error('Admin login error:', error)
     
