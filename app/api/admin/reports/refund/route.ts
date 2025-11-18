@@ -26,41 +26,47 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { reportId } = refundSchema.parse(body)
 
-    // Get report details with delivery time
-    const report = await db
-      .select({
-        reportId: tokenReports.id,
-        keyId: tokenReports.keyId,
-        tokenId: tokenReports.tokenId,
-        reportedAt: tokenReports.reportedAt,
-        refundedAt: tokenReports.refundedAt,
-        deliveredAt: deliveries.deliveredAt,
-      })
+    // Get report details
+    const reportRecord = await db
+      .select()
       .from(tokenReports)
-      .leftJoin(deliveries, and(
-        eq(deliveries.keyId, tokenReports.keyId),
-        eq(deliveries.tokenId, tokenReports.tokenId)
-      ))
       .where(eq(tokenReports.id, reportId))
       .limit(1)
 
-    if (report.length === 0) {
+    if (reportRecord.length === 0) {
       return errorResponse('NOT_FOUND', 404, 'Report not found')
     }
 
-    const reportData = report[0]
+    const reportData = reportRecord[0]
 
     // Check if already refunded
     if (reportData.refundedAt) {
       return errorResponse('ALREADY_REFUNDED', 400, 'This report has already been refunded')
     }
 
-    if (!reportData.deliveredAt || !reportData.reportedAt) {
+    // Get delivery time
+    const deliveryRecord = await db
+      .select({
+        deliveredAt: deliveries.deliveredAt,
+      })
+      .from(deliveries)
+      .where(and(
+        eq(deliveries.keyId, reportData.keyId),
+        eq(deliveries.tokenId, reportData.tokenId)
+      ))
+      .limit(1)
+
+    if (deliveryRecord.length === 0) {
+      return errorResponse('INVALID_DATA', 400, 'Delivery record not found')
+    }
+
+    const deliveredAt = deliveryRecord[0].deliveredAt
+    if (!deliveredAt || !reportData.reportedAt) {
       return errorResponse('INVALID_DATA', 400, 'Missing delivery or report time')
     }
 
     // Calculate time difference in minutes
-    const deliveredTime = new Date(reportData.deliveredAt).getTime()
+    const deliveredTime = new Date(deliveredAt).getTime()
     const reportedTime = new Date(reportData.reportedAt).getTime()
     const diffMinutes = (reportedTime - deliveredTime) / (1000 * 60)
 
