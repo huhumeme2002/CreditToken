@@ -37,7 +37,8 @@ export default function AdminLoginPage() {
       const data = await response.json()
 
       if (response.ok && data.ok) {
-        router.push('/admin')
+        // Use window.location.href instead of router.push to ensure cookie is sent
+        window.location.href = '/admin'
       } else {
         setError({ 
           message: data.message || getErrorMessage(data.error) 
