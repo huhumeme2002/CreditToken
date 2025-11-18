@@ -75,13 +75,26 @@ export async function POST(request: NextRequest) {
     // >= 10 minutes: partial refund $1.25 (125 cents)
     const refundAmount = diffMinutes < 10 ? 250 : 125
 
+    // Get current key credit
+    const keyRecord = await db
+      .select({ creditCents: keys.creditCents })
+      .from(keys)
+      .where(eq(keys.id, reportData.keyId))
+      .limit(1)
+
+    if (keyRecord.length === 0) {
+      return errorResponse('NOT_FOUND', 404, 'Key not found')
+    }
+
+    const newCreditCents = (keyRecord[0].creditCents || 0) + refundAmount
+
     // Update key credit and mark report as refunded in a transaction
     await db.transaction(async (tx) => {
       // Add refund to key credit
       await tx
         .update(keys)
         .set({
-          creditCents: sql`${keys.creditCents} + ${refundAmount}`,
+          creditCents: newCreditCents,
         })
         .where(eq(keys.id, reportData.keyId))
 
