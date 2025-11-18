@@ -70,6 +70,11 @@ export default function AdminPage() {
   const [newKeyCredit, setNewKeyCredit] = useState('')
   const [createLoading, setCreateLoading] = useState(false)
   
+  // Bulk import state
+  const [bulkImportFile, setBulkImportFile] = useState<File | null>(null)
+  const [bulkImportLoading, setBulkImportLoading] = useState(false)
+  const [bulkImportResult, setBulkImportResult] = useState<{ success: number; failed: number; errors: string[] } | null>(null)
+  
   // Keys pagination
   const [keysLoading, setKeysLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -537,6 +542,46 @@ export default function AdminPage() {
     }
   }
 
+  const handleBulkImport = async () => {
+    if (!bulkImportFile) {
+      alert('Vui lòng chọn file Excel')
+      return
+    }
+
+    setBulkImportLoading(true)
+    setBulkImportResult(null)
+    setError(null)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', bulkImportFile)
+
+      const response = await fetch('/api/admin/keys/bulk-import', {
+        method: 'POST',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: formData,
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data?.data) {
+        setBulkImportResult(data.data)
+        setBulkImportFile(null)
+        await fetchKeys()
+      } else if (response.status === 401) {
+        router.push('/admin/login')
+      } else {
+        setError(data?.message || 'Không thể import file')
+      }
+    } catch (err) {
+      setError('Có lỗi xảy ra khi import file')
+    } finally {
+      setBulkImportLoading(false)
+    }
+  }
+
   const handleLogout = async () => {
     try {
       await fetch('/api/admin/logout', {
@@ -909,10 +954,75 @@ export default function AdminPage() {
             </div>
           </div>
 
+          {/* Bulk Import Excel */}
+          <div className="card">
+            <div className="card-header">
+              <h3 className="text-md font-medium">Import hàng loạt từ Excel</h3>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm">
+                <p className="font-medium text-blue-900 mb-2">📋 Định dạng file Excel:</p>
+                <div className="text-blue-800 space-y-1">
+                  <p>• Cột 1: <strong>Mã đơn hàng</strong> (sẽ là key)</p>
+                  <p>• Cột 2: <strong>Giá trị còn lại (VNĐ)</strong> - ví dụ: 90000</p>
+                  <p>• Cột 3: <strong>Ngày hết hạn</strong> - định dạng: DD/MM/YYYY</p>
+                  <p className="mt-2 text-xs">💡 Quy đổi: 1000 VNĐ = 1 USD</p>
+                </div>
+              </div>
+
+              <div>
+                <label className="form-label">Chọn file Excel (.xlsx, .xls)</label>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  className="form-input"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    setBulkImportFile(file || null)
+                    setBulkImportResult(null)
+                  }}
+                  disabled={bulkImportLoading}
+                />
+              </div>
+
+              <button
+                onClick={handleBulkImport}
+                disabled={bulkImportLoading || !bulkImportFile}
+                className="btn-primary"
+              >
+                {bulkImportLoading ? 'Đang import...' : 'Import Keys'}
+              </button>
+
+              {bulkImportResult && (
+                <div className={`rounded-md p-4 ${bulkImportResult.failed > 0 ? 'bg-yellow-50 border border-yellow-200' : 'bg-green-50 border border-green-200'}`}>
+                  <p className="font-medium mb-2">
+                    {bulkImportResult.failed > 0 ? '⚠️ Import hoàn tất (có lỗi)' : '✅ Import thành công!'}
+                  </p>
+                  <ul className="text-sm space-y-1">
+                    <li>• Thành công: <strong className="text-green-700">{bulkImportResult.success}</strong> keys</li>
+                    <li>• Thất bại: <strong className="text-red-700">{bulkImportResult.failed}</strong> keys</li>
+                  </ul>
+                  
+                  {bulkImportResult.errors.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-sm font-medium text-red-900 mb-1">Lỗi:</p>
+                      <ul className="text-xs text-red-800 space-y-1 max-h-40 overflow-y-auto">
+                        {bulkImportResult.errors.map((err, idx) => (
+                          <li key={idx}>• {err}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Create Key Form */}
           <div className="card">
             <div className="card-header">
-              <h3 className="text-md font-medium">Tạo Key mới</h3>
+              <h3 className="text-md font-medium">Tạo Key thủ công</h3>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
