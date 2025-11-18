@@ -54,6 +54,9 @@ export async function POST(request: NextRequest) {
       tokenId: tokenRow.id,
       reportedAt: new Date(),
       reason: reason && reason.trim().length > 0 ? reason : undefined,
+      refundedAt: null,
+      refundAmount: null,
+      rejectedAt: null,
     })
 
     return successResponse({ ok: true })
