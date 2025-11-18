@@ -25,6 +25,8 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const { reportId } = refundSchema.parse(body)
+    
+    console.log('[Refund] Processing refund for reportId:', reportId)
 
     // Get report details
     const reportRecord = await db
@@ -44,6 +46,8 @@ export async function POST(request: NextRequest) {
       return errorResponse('ALREADY_REFUNDED', 400, 'This report has already been refunded')
     }
 
+    console.log('[Refund] Report data:', { keyId: reportData.keyId, tokenId: reportData.tokenId })
+
     // Get delivery time
     const deliveryRecord = await db
       .select({
@@ -56,12 +60,16 @@ export async function POST(request: NextRequest) {
       ))
       .limit(1)
 
+    console.log('[Refund] Delivery record found:', deliveryRecord.length > 0)
+
     if (deliveryRecord.length === 0) {
+      console.error('[Refund] No delivery record found for keyId:', reportData.keyId, 'tokenId:', reportData.tokenId)
       return errorResponse('INVALID_DATA', 400, 'Delivery record not found')
     }
 
     const deliveredAt = deliveryRecord[0].deliveredAt
     if (!deliveredAt || !reportData.reportedAt) {
+      console.error('[Refund] Missing timestamps - deliveredAt:', deliveredAt, 'reportedAt:', reportData.reportedAt)
       return errorResponse('INVALID_DATA', 400, 'Missing delivery or report time')
     }
 
@@ -70,10 +78,14 @@ export async function POST(request: NextRequest) {
     const reportedTime = new Date(reportData.reportedAt).getTime()
     const diffMinutes = (reportedTime - deliveredTime) / (1000 * 60)
 
+    console.log('[Refund] Time diff:', diffMinutes, 'minutes')
+
     // Determine refund amount based on time difference
     // < 10 minutes: full refund $2.5 (250 cents)
     // >= 10 minutes: partial refund $1.25 (125 cents)
     const refundAmount = diffMinutes < 10 ? 250 : 125
+
+    console.log('[Refund] Refund amount:', refundAmount, 'cents')
 
     // Get current key credit
     const keyRecord = await db
@@ -83,30 +95,41 @@ export async function POST(request: NextRequest) {
       .limit(1)
 
     if (keyRecord.length === 0) {
+      console.error('[Refund] Key not found:', reportData.keyId)
       return errorResponse('NOT_FOUND', 404, 'Key not found')
     }
 
-    const newCreditCents = (keyRecord[0].creditCents || 0) + refundAmount
+    const currentCredit = keyRecord[0].creditCents || 0
+    const newCreditCents = currentCredit + refundAmount
+
+    console.log('[Refund] Credit update:', currentCredit, '->', newCreditCents)
 
     // Update key credit and mark report as refunded in a transaction
-    await db.transaction(async (tx) => {
-      // Add refund to key credit
-      await tx
-        .update(keys)
-        .set({
-          creditCents: newCreditCents,
-        })
-        .where(eq(keys.id, reportData.keyId))
+    try {
+      await db.transaction(async (tx) => {
+        // Add refund to key credit
+        await tx
+          .update(keys)
+          .set({
+            creditCents: newCreditCents,
+          })
+          .where(eq(keys.id, reportData.keyId))
 
-      // Mark report as refunded
-      await tx
-        .update(tokenReports)
-        .set({
-          refundedAt: new Date(),
-          refundAmount: refundAmount,
-        })
-        .where(eq(tokenReports.id, reportId))
-    })
+        // Mark report as refunded
+        await tx
+          .update(tokenReports)
+          .set({
+            refundedAt: new Date(),
+            refundAmount: refundAmount,
+          })
+          .where(eq(tokenReports.id, reportId))
+      })
+      
+      console.log('[Refund] Transaction completed successfully')
+    } catch (txError) {
+      console.error('[Refund] Transaction failed:', txError)
+      throw txError
+    }
 
     return successResponse({
       refunded: true,
